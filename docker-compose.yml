@@ -1,0 +1,49 @@
+version: '3.7'
+services:
+  postgres-summer:
+    container_name: postgres-summer
+    image: postgres:12.4
+    restart: always
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    expose:
+      - '5432'
+    volumes:
+      - ./data/postgres-db:/var/lib/postgresql/data:rw
+
+  rabbitmq_summer:
+    image: rabbitmq:3-management
+    container_name: rabbitmq_summer
+    hostname: rabbit_host
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
+    restart: on-failure
+
+  worker_summer:
+    build:
+      context: .
+    container_name: worker-summer
+    environment:
+      - BROKER_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbit_host:5672//
+    command: sh -c "sleep 8; celery -A celery_module.celery_app worker -f LOGGING.log --loglevel=INFO"
+    volumes:
+      - .:/app
+    depends_on:
+      - rabbitmq_summer
+
+  beat_summer:
+    build:
+      context: .
+    container_name: beat_summer
+    environment:
+      - BROKER_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbit_host:5672//
+    command: sh -c "sleep 10; celery -A celery_module.celery_app beat --loglevel=INFO"
+    volumes:
+      - .:/app
+    depends_on:
+      - worker_summer
